@@ -2,7 +2,7 @@
 
 An unofficial Mac app for [WeTrakr](https://wetrakr.com/) to mark episodes as watched. It displays the "Next episodes" section from the profile page, including respecting the set Spoiler Protection (Visible, Blurred, or Show Backdrop), remaining episodes, title block, episode number, and episode milestone if available. The app automatically refreshes when opened, an episode is marked as watched, or via the **Refresh** button.
 
-<p align="center"><img width="100%" alt="チェック 〜 Chekku" src="https://github.com/user-attachments/assets/df3162f7-c7af-40d9-9699-d044b6dca4bc" /></p>
+<p align="center"><img width="100%" alt="チェック 〜 Chekku" src="https://github.com/user-attachments/assets/95468755-47f9-49da-aa6c-8753b68cac89" /></p>
 
 ## Connect to WeTrakr
 1. Own API key required via [WeTrakr Settings → API](https://wetrakr.com/profile/settings/api).
