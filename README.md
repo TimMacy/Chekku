@@ -17,5 +17,9 @@ Requires macOS 15.2 or later. Download the app from [Releases](https://github.co
 
 If macOS blocks the app, choose [Open Anyway](https://support.apple.com/102445) under **System Settings → Privacy & Security**.
 
-# Disclaimer
+## License
+
+MIT. See [LICENSE](LICENSE).
+
+## Disclaimer
 Chekku is an independent project and is not affiliated with or endorsed by WeTrakr.
