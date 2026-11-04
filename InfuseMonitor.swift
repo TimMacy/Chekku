@@ -92,7 +92,8 @@ final class InfuseMonitor: ObservableObject {
     private var devices: [String: NWEndpoint] = [:]
     private var pollTask: Task<Void, Never>?
     private var saved: Set<ScrobbleItem.Identity> = []
-    private var retryAfter: [ScrobbleItem.Identity: Date] = [:]
+    private var pending: [ScrobbleItem.Identity: (item: ScrobbleItem, retryAt: Date)] = [:]
+    private var notFound: Set<ScrobbleItem.Identity> = []
 
     init(scrobble: @escaping (ScrobbleItem) async throws -> Void) {
         self.scrobble = scrobble
@@ -127,7 +128,8 @@ final class InfuseMonitor: ObservableObject {
         pollTask = nil
         devices = [:]
         saved.removeAll()
-        retryAfter.removeAll()
+        pending.removeAll()
+        notFound.removeAll()
         status = .searching
     }
 
@@ -143,7 +145,6 @@ final class InfuseMonitor: ObservableObject {
 
     private func poll() async {
         let endpoints = Array(devices.values)
-        guard !endpoints.isEmpty else { return }
         var reports: [InfuseNowPlaying] = []
         await withTaskGroup(of: InfuseNowPlaying?.self) { group in
             for endpoint in endpoints {
@@ -158,26 +159,31 @@ final class InfuseMonitor: ObservableObject {
             guard let item = report.item.flatMap(ScrobbleItem.init), let progress = report.progress else { continue }
             if progress >= Self.watchedThreshold { await finish(item) }
         }
+        for entry in Array(pending.values) {
+            guard !Task.isCancelled else { return }
+            await finish(entry.item)
+        }
         if !Task.isCancelled { updateStatus(active) }
     }
 
     private func finish(_ item: ScrobbleItem) async {
         let key = item.identity
-        guard !saved.contains(key) else { return }
-        if let date = retryAfter[key], date > Date() { return }
+        guard !saved.contains(key), !notFound.contains(key) else { return }
+        if let entry = pending[key], entry.retryAt > Date() { return }
         status = .saving(title: item.title)
         do {
             try await scrobble(item)
             guard !Task.isCancelled else { return }
             saved.insert(key)
-            retryAfter[key] = nil
+            pending[key] = nil
             status = .saved(title: item.title)
         } catch {
             guard !Task.isCancelled else { return }
             if case WeTrakrError.http(404, _, _) = error {
-                retryAfter[key] = Date().addingTimeInterval(3600)
+                pending[key] = nil
+                notFound.insert(key)
             } else {
-                retryAfter[key] = Date().addingTimeInterval(60)
+                pending[key] = (item, Date().addingTimeInterval(60))
             }
             status = .failed(title: item.title, message: error.localizedDescription)
         }
