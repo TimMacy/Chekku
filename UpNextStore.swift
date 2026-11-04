@@ -2,10 +2,10 @@ import Foundation
 import Combine
 
 enum SyncPhase: Equatable {
-    case idle, checking, loading, saving, current(Date), failed
+    case idle, checking, loading, saving, scrobbling, current(Date), failed
     var isBusy: Bool {
         switch self {
-        case .checking, .loading, .saving: return true
+        case .checking, .loading, .saving, .scrobbling: return true
         default: return false
         }
     }
@@ -34,6 +34,10 @@ final class UpNextStore: ObservableObject {
     private var snapshot: QueueSnapshot?
     private(set) var operation: Task<Void, Never>?
     private var connectionTask: Task<Void, Never>?
+    private(set) lazy var infuse = InfuseMonitor { [weak self] item in
+        guard let self else { throw CancellationError() }
+        try await self.scrobbleWatched(item)
+    }
 
     init(api: any WeTrakrServing = APIClient(), cache: any QueueStorage = FileQueueStorage(),
          isPreview: Bool = false, defaults: UserDefaults = .standard) {
@@ -76,10 +80,11 @@ final class UpNextStore: ObservableObject {
     func open() {
         guard isConnected else { return }
         refresh()
+        if !isPreview { infuse.start() }
     }
 
     func refresh(force: Bool = false) {
-        guard operation == nil, !isConnecting, isConnected else { return }
+        guard operation == nil, phase != .scrobbling, !isConnecting, isConnected else { return }
         errorMessage = nil
         phase = .checking
         operation = Task {
@@ -131,7 +136,7 @@ final class UpNextStore: ObservableObject {
 
     func connect() {
         let key = clientID.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !key.isEmpty, !isConnecting, operation == nil else { return }
+        guard !key.isEmpty, !isConnecting, operation == nil, phase != .scrobbling else { return }
         clientID = key
         defaults.set(key, forKey: "clientID")
         connectionError = nil
@@ -168,6 +173,10 @@ final class UpNextStore: ObservableObject {
                             errorMessage = nil
                             isConnecting = false
                             refresh(force: true)
+                            if !isPreview {
+                                infuse.stop()
+                                infuse.start()
+                            }
                             return
                         }
                     } catch WeTrakrError.http(429, _, _) {
@@ -188,9 +197,10 @@ final class UpNextStore: ObservableObject {
     }
 
     func disconnect() {
-        guard operation == nil, !isConnecting else { return }
+        guard operation == nil, phase != .scrobbling, !isConnecting else { return }
         do {
             try api.disconnect()
+            infuse.stop()
             clientID = ""
             defaults.removeObject(forKey: "clientID")
             defaults.removeObject(forKey: Self.imageModePreferenceKey)
@@ -213,6 +223,31 @@ final class UpNextStore: ObservableObject {
     func close() {
         operation?.cancel()
         connectionTask?.cancel()
+        infuse.stop()
+    }
+
+    private func scrobbleWatched(_ item: ScrobbleItem) async throws {
+        while let operation {
+            await operation.value
+            try Task.checkCancellation()
+        }
+        try Task.checkCancellation()
+        guard isConnected, !needsConnection, !isConnecting else { throw WeTrakrError.signInRequired }
+        let previousPhase = phase
+        phase = .scrobbling
+        do {
+            try await api.scrobbleWatched(item)
+            try Task.checkCancellation()
+        } catch {
+            phase = previousPhase
+            if !Task.isCancelled {
+                if case WeTrakrError.http(401, _, _) = error { fail(error) }
+                if case WeTrakrError.signInRequired = error { fail(error) }
+            }
+            throw error
+        }
+        phase = previousPhase
+        refresh(force: true)
     }
 
     private func fetchQueue(force: Bool) async throws -> QueueSnapshot {

@@ -15,9 +15,9 @@
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.0</string>
+    <string>1.1</string>
     <key>CFBundleVersion</key>
-    <string>1</string>
+    <string>2</string>
     <key>NSHumanReadableCopyright</key>
     <string>© 2026 Tim Macy</string>
     <key>CFBundleIconFile</key>
@@ -26,6 +26,12 @@
     <string>15.2</string>
     <key>LSApplicationCategoryType</key>
     <string>public.app-category.entertainment</string>
+    <key>NSBonjourServices</key>
+    <array>
+        <string>_infuse-np._tcp</string>
+    </array>
+    <key>NSLocalNetworkUsageDescription</key>
+    <string>Chekku finds Infuse on your local network to mark movies and episodes as watched.</string>
     <key>NSHighResolutionCapable</key>
     <true/>
 </dict>
