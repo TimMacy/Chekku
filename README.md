@@ -2,7 +2,7 @@
 
 An unofficial Mac app for [WeTrakr](https://wetrakr.com/) to manually mark episodes as watched, or shows and movies automatically via [Infuse](https://firecore.com/infuse). The app displays the "Next episodes" section from the profile page, while respecting the set Spoiler Protection (Visible, Blurred, or Show Backdrop). It automatically refreshes on launch, after an episode is marked as watched, or via the **Refresh** button.
 
-<p align="center"><img width="100%" alt="チェック 〜 Chekku" src="https://github.com/user-attachments/assets/95468755-47f9-49da-aa6c-8753b68cac89" /></p>
+<p align="center"><img width="100%" alt="チェック 〜 Chekku" src="https://github.com/user-attachments/assets/792b3e5e-3b72-4cd9-b258-097640792c54" /></p>
 
 ## Connect to WeTrakr
 1. A personal API key is required and can be obtained via [WeTrakr Settings → API](https://wetrakr.com/profile/settings/api).
