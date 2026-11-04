@@ -11,7 +11,7 @@ An unofficial Mac app for [WeTrakr](https://wetrakr.com/) to manually mark episo
 
 Chekku uses device authorization with a client_id. No WeTrakr password or client_secret is entered in the app. Connection tokens are stored in macOS Keychain.
 
-## Automatically mark playback as watched via Infuse
+## Connect to Infuse
 1. In Infuse 8.5.9 or later, enable **Settings → Playback → Now Playing API**.
 2. Open Chekku on the same network and allow **Local Network** access when macOS asks.
 3. While Chekku is open, it automatically marks episodes and movies as watched when playback reaches 90%, including when watching in the Infuse Apple TV app.
