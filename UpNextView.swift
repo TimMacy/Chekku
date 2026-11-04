@@ -167,9 +167,7 @@ struct UpNextView: View {
             }
             Spacer()
             if !store.visibleShows.isEmpty {
-                Text(store.isPreview ? "Connect your account to mark real episodes watched." :
-                        "Hover over a poster to mark its episode watched.")
-                    .foregroundStyle(.secondary)
+                Text(store.isPreview ? "Connect an account to mark episodes as watched." : "Click a poster to mark its episode as watched.").foregroundStyle(.secondary)
                 Text("|").foregroundStyle(.tertiary).accessibilityHidden(true)
             }
             Link("Powered by WeTrakr", destination: URL(string: "https://wetrakr.com/")!)
