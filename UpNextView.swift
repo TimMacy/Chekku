@@ -124,6 +124,7 @@ struct UpNextView: View {
             if store.phase.isBusy {
                 ProgressView().controlSize(.small)
                 Text(store.phase == .saving ? "Saving episode…" :
+                        store.phase == .scrobbling ? "Saving playback…" :
                         store.phase == .loading ? "Loading episodes…" : "Checking for updates…")
             } else if store.isPreview {
                 Text("Sample data").foregroundStyle(.secondary)
@@ -160,20 +161,55 @@ struct UpNextView: View {
     }
 
     private var footer: some View {
-        HStack {
+        HStack(spacing: 8) {
+            if store.isConnected && !store.isPreview {
+                InfuseStatusView(monitor: store.infuse)
+            }
+            Spacer()
+            if !store.visibleShows.isEmpty {
+                Text(store.isPreview ? "Connect an account to mark episodes as watched." : "Click a poster to mark its episode as watched.").foregroundStyle(.secondary)
+                Text("|").foregroundStyle(.tertiary).accessibilityHidden(true)
+            }
             Link("Powered by WeTrakr", destination: URL(string: "https://wetrakr.com/")!)
                 .modifier(PointingHandCursor())
                 .foregroundStyle(.secondary)
-            Spacer()
-            if !store.visibleShows.isEmpty {
-                Text(store.isPreview ? "Connect your account to mark real episodes watched." :
-                        "Hover over a poster to mark its episode watched.")
-                    .foregroundStyle(.secondary)
-            }
+                .fixedSize()
         }
         .font(.system(size: 11))
         .padding(.horizontal, 24)
         .padding(.vertical, 14)
+    }
+}
+
+private struct InfuseStatusView: View {
+    @ObservedObject var monitor: InfuseMonitor
+
+    var body: some View {
+        HStack(spacing: 5) {
+            switch monitor.status {
+            case .searching:
+                Text("Infuse not found").foregroundStyle(.secondary)
+                    .help("Turn on Infuse › Settings › Playback › Now Playing API.")
+            case .idle:
+                Text("Infuse connected").foregroundStyle(.secondary)
+            case .playing(let title, let progress):
+                Image(systemName: "play.fill").foregroundStyle(.secondary)
+                Text("\(title) · \(progress)%").foregroundStyle(.secondary)
+                    .help("Marked watched at \(Int(InfuseMonitor.watchedThreshold))%.")
+            case .saving(let title):
+                ProgressView().controlSize(.mini)
+                Text("Marking \(title) watched…")
+            case .saved(let title):
+                Image(systemName: "checkmark.circle.fill").foregroundStyle(AppStyle.success)
+                Text("\(title) marked watched")
+            case .failed(let title, let message):
+                Image(systemName: "exclamationmark.circle").foregroundStyle(.orange)
+                Text("Couldn't mark \(title) watched").help(message)
+            }
+        }
+        .foregroundStyle(.secondary)
+        .lineLimit(1)
+        .accessibilityElement(children: .combine)
     }
 }
 

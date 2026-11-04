@@ -31,6 +31,7 @@ struct ConnectionView: View {
                     }
                     Spacer(minLength: 0)
                     Button("Forget connection") { store.disconnect() }
+                        .disabled(store.phase == .scrobbling)
                         .help("Remove the saved login, app key, and episode list from this Mac.")
                 }
                 .frame(maxWidth: .infinity)

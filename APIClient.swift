@@ -9,6 +9,7 @@ protocol WeTrakrServing {
     func episodeImageMode() async throws -> EpisodeImageMode
     func nextShows() async throws -> [TrackedShow]
     func markWatched(episodeID: Int) async throws
+    func scrobbleWatched(_ item: ScrobbleItem) async throws
     func deviceCode(clientID: String) async throws -> DeviceCode
     func pollToken(code: DeviceCode, clientID: String) async throws -> Bool
     func disconnect() throws
@@ -168,6 +169,25 @@ final class APIClient: WeTrakrServing {
         let response = try await authorized(path: "/sync/tracking", method: "POST", body: body)
         let update = try APIJSON.decoder().decode(TrackingUpdate.self, from: response.data)
         try update.confirmEpisodeWasWatched()
+    }
+
+    func scrobbleWatched(_ item: ScrobbleItem) async throws {
+        var payload: [String: Any] = ["progress": 100, "app_version": "Chekku/1.1"]
+        switch item.kind {
+        case .movie:
+            payload["movie"] = ["ids": item.ids]
+        case .episode(let season, let number):
+            payload["show"] = ["ids": item.ids]
+            payload["episode"] = ["season": season, "number": number]
+        }
+        let body = try JSONSerialization.data(withJSONObject: payload)
+        let threshold = String(Int(InfuseMonitor.watchedThreshold))
+        let response = try await authorized(path: "/scrobble/stop", method: "POST",
+                                            query: [URLQueryItem(name: "min_progress", value: threshold)],
+                                            body: body)
+        guard response.http.statusCode == 201 else {
+            throw WeTrakrError.message("WeTrakr didn't confirm that \(item.title) was marked watched.")
+        }
     }
 
     private func authorized(path: String, method: String = "GET", query: [URLQueryItem] = [],
