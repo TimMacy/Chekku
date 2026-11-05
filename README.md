@@ -1,4 +1,4 @@
-# チェック 〜 Chekku
+# チェック 〜 Chekku <a href="https://github.com/TimMacy/Chekku/releases"><img align="right" src="https://img.shields.io/github/v/release/TimMacy/Chekku?style=for-the-badge" alt="Releases"></a><a href="https://github.com/TimMacy/Chekku/blob/main/LICENSE"><img align="right" src="https://img.shields.io/github/license/TimMacy/Douyin-LiveCaption-Bridge?style=for-the-badge&color=white" alt="MIT License"></a>
 
 An unofficial Mac app for [WeTrakr](https://wetrakr.com/) to manually mark episodes as watched, or shows and movies automatically via [Infuse](https://firecore.com/infuse). The app displays the "Next episodes" section from the profile page, while respecting the set Spoiler Protection (Visible, Blurred, or Show Backdrop). It automatically refreshes on launch, after an episode is marked as watched, or via the **Refresh** button.
 
