@@ -1,4 +1,3 @@
-import AppKit
 import SwiftUI
 
 struct ConnectionView: View {
@@ -57,7 +56,6 @@ struct ConnectionView: View {
                             .font(.system(size: 30, weight: .semibold, design: .monospaced))
                             .textSelection(.enabled)
                         Link("Approve on WeTrakr", destination: url)
-                            .modifier(PointingHandCursor())
                             .buttonStyle(.borderedProminent)
                             .controlSize(.large)
                         HStack(spacing: 8) {
@@ -65,7 +63,6 @@ struct ConnectionView: View {
                             Text("Waiting for your approval…").font(.callout).foregroundStyle(.secondary)
                             Spacer()
                             Button("Cancel") { store.cancelConnection() }
-                                .modifier(PointingHandCursor())
                         }
                     }
                     .padding(16)
@@ -81,7 +78,6 @@ struct ConnectionView: View {
                     }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.large)
-                    .modifier(PointingHandCursor())
                     .disabled(store.clientID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || store.isConnecting)
                 }
                 Link("API app registration", destination: URL(string: "https://wetrakr.com/profile/settings/api")!)
@@ -111,7 +107,6 @@ private struct ConnectionActionStyle: ButtonStyle {
 
     private struct Label: View {
         let configuration: ButtonStyleConfiguration
-        @Environment(\.isEnabled) private var isEnabled
         @State private var isHovering = false
         var body: some View {
             configuration.label
@@ -125,11 +120,7 @@ private struct ConnectionActionStyle: ButtonStyle {
                             Color(red: 0.21, green: 0.22, blue: 0.25) : AppStyle.surface,
                             in: RoundedRectangle(cornerRadius: 8))
                 .contentShape(RoundedRectangle(cornerRadius: 8))
-                .modifier(PointingHandCursor())
                 .opacity(configuration.isPressed ? 0.85 : 1)
-                .onContinuousHover { phase in
-                    if case .active = phase, isEnabled { NSCursor.pointingHand.set() }
-                }
                 .onHover { isHovering = $0 }
         }
     }

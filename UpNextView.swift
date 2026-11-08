@@ -23,7 +23,6 @@ struct UpNextView: View {
                     Spacer(minLength: 8)
                     if store.needsConnection {
                         Button("Connect") { showingConnection = true }
-                            .modifier(PointingHandCursor())
                     }
                 }
                 .padding(14)
@@ -103,7 +102,6 @@ struct UpNextView: View {
             }
             .buttonStyle(.plain)
             .foregroundStyle(isConnectionHovered && isConnectionEnabled ? Color.white : Color.secondary)
-            .modifier(PointingHandCursor())
             .onHover { isConnectionHovered = $0 }
             .disabled(!isConnectionEnabled)
             .help("WeTrakr connection")
@@ -230,7 +228,6 @@ private struct RefreshButtonStyle: ButtonStyle {
                 .padding(.horizontal, 10)
                 .padding(.vertical, 7)
                 .contentShape(RoundedRectangle(cornerRadius: 6))
-                .modifier(PointingHandCursor())
                 .opacity(isEnabled ? (configuration.isPressed ? 0.8 : isHovering ? 1 : 0.6) : 0.3)
                 .onHover { isHovering = $0 }
         }

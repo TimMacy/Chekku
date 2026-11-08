@@ -55,7 +55,6 @@ struct EpisodeCard: View {
             }
             .buttonStyle(.plain)
             .focused($isFocused)
-            .modifier(PointingHandCursor())
             .disabled(!isEnabled)
             .onHover { isHovering = $0 && isEnabled }
             .onChange(of: isEnabled) { _, enabled in
