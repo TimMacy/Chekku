@@ -172,7 +172,7 @@ final class APIClient: WeTrakrServing {
     }
 
     func scrobbleWatched(_ item: ScrobbleItem) async throws {
-        var payload: [String: Any] = ["progress": 100, "app_version": "Chekku/1.1"]
+        var payload: [String: Any] = ["progress": 100, "app_version": "Chekku/1.1.1"]
         switch item.kind {
         case .movie:
             payload["movie"] = ["ids": item.ids]
