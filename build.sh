@@ -2,6 +2,8 @@
 set -euo pipefail
 
 cd "$(dirname "$0")"
+version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Info.plist)"
+[[ "$version" =~ ^[0-9]+\.[0-9]+(\.[0-9]+)?$ ]] || { echo "Invalid app version"; exit 1; }
 sdk="$(xcrun --sdk macosx --show-sdk-path)"
 minimum_os="$(/usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' Info.plist)"
 work="$(mktemp -d "${TMPDIR:-/tmp}/chekku.XXXXXX")"
@@ -20,6 +22,8 @@ app="$work/Chekku.app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
 xcrun lipo -create "$work/arm64" "$work/x86_64" -output "$app/Contents/MacOS/Chekku"
 cp Info.plist "$app/Contents/Info.plist"
+/usr/libexec/PlistBuddy -c "Set :CFBundleVersion $version" "$app/Contents/Info.plist" 2>/dev/null \
+    || /usr/libexec/PlistBuddy -c "Add :CFBundleVersion string $version" "$app/Contents/Info.plist"
 cp AppIcon.icns "$app/Contents/Resources/AppIcon.icns"
 cp Credits.rtf "$app/Contents/Resources/Credits.rtf"
 xattr -cr "$app"
@@ -32,4 +36,4 @@ done
 
 rm -rf Chekku.app
 mv "$app" Chekku.app
-echo "Built Chekku.app"
+echo "Built Chekku.app version $version"

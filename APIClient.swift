@@ -17,6 +17,11 @@ protocol WeTrakrServing {
 
 @MainActor
 final class APIClient: WeTrakrServing {
+    private static let appVersion: String = {
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown"
+        return "Chekku/\(version)"
+    }()
+
     private let session: URLSession
     private let storage: any CredentialStorage
     private var credentials: Credentials?
@@ -175,7 +180,7 @@ final class APIClient: WeTrakrServing {
     }
 
     func scrobbleWatched(_ item: ScrobbleItem) async throws {
-        var payload: [String: Any] = ["progress": 100, "app_version": "Chekku/1.1.1"]
+        var payload: [String: Any] = ["progress": 100, "app_version": Self.appVersion]
         switch item.kind {
         case .movie:
             payload["movie"] = ["ids": item.ids]
@@ -263,7 +268,7 @@ final class APIClient: WeTrakrServing {
         request.setValue(clientID, forHTTPHeaderField: "wetrakr-api-key")
         request.setValue("1", forHTTPHeaderField: "wetrakr-api-version")
         request.setValue("en-US", forHTTPHeaderField: "wetrakr-api-language")
-        request.setValue("WeTrakrMac/1.0", forHTTPHeaderField: "User-Agent")
+        request.setValue(Self.appVersion, forHTTPHeaderField: "User-Agent")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         if body != nil { request.setValue("application/json", forHTTPHeaderField: "Content-Type") }
         if let accessToken { request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization") }
