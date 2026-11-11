@@ -91,7 +91,7 @@ final class UpNextStore: ObservableObject {
             defer { operation = nil }
             do {
                 let updated = try await fetchQueue(force: force)
-                try publish(updated)
+                publish(updated)
                 requiresRefresh = false
                 needsConnection = false
                 phase = .current(Date())
@@ -122,7 +122,7 @@ final class UpNextStore: ObservableObject {
                 guard !updated.shows.contains(where: { $0.nextWatchingEpisode?.id == episode.id }) else {
                     throw WeTrakrError.message("Up Next hasn't advanced to the next episode yet.")
                 }
-                try publish(updated)
+                publish(updated)
                 phase = .current(Date())
             } catch is CancellationError {
                 phase = .idle
@@ -276,10 +276,14 @@ final class UpNextStore: ObservableObject {
                              schemaVersion: QueueSnapshot.currentSchemaVersion)
     }
 
-    private func publish(_ snapshot: QueueSnapshot) throws {
-        try cache.save(snapshot)
+    private func publish(_ snapshot: QueueSnapshot) {
         self.snapshot = snapshot
         shows = snapshot.shows
+        do {
+            try cache.save(snapshot)
+        } catch {
+            try? cache.remove()
+        }
     }
 
     private func fail(_ error: Error, prefix: String = "", suffix: String = "") {

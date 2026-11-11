@@ -21,6 +21,7 @@ final class APIClient: WeTrakrServing {
     private let storage: any CredentialStorage
     private var credentials: Credentials?
     private var episodeMetadata: [Int: (milestone: String?, fetchedAt: Date)] = [:]
+    private var refreshTask: Task<Void, Error>?
     let restorationError: String?
 
     var clientID: String { credentials?.clientID ?? "" }
@@ -60,6 +61,8 @@ final class APIClient: WeTrakrServing {
 
     func disconnect() throws {
         try storage.remove()
+        refreshTask?.cancel()
+        refreshTask = nil
         credentials = nil
         episodeMetadata.removeAll()
     }
@@ -193,24 +196,34 @@ final class APIClient: WeTrakrServing {
     private func authorized(path: String, method: String = "GET", query: [URLQueryItem] = [],
                             body: Data? = nil) async throws -> Response {
         guard let credentials else { throw WeTrakrError.signInRequired }
-        if credentials.expiresAt.timeIntervalSinceNow < 60 { try await refreshToken() }
+        if credentials.expiresAt.timeIntervalSinceNow < 60 {
+            try await refreshToken(replacing: credentials.accessToken)
+        }
+        let accessToken = self.credentials?.accessToken
         do {
             return try await send(path: path, method: method, clientID: credentials.clientID,
-                                  accessToken: self.credentials?.accessToken, query: query, body: body)
+                                  accessToken: accessToken, query: query, body: body)
         } catch WeTrakrError.http(401, _, _) {
-            try await refreshToken()
+            try await refreshToken(replacing: accessToken)
             return try await send(path: path, method: method, clientID: credentials.clientID,
                                   accessToken: self.credentials?.accessToken, query: query, body: body)
         }
     }
 
-    private func refreshToken() async throws {
+    private func refreshToken(replacing staleToken: String?) async throws {
+        if let refreshTask { return try await refreshTask.value }
         guard let credentials else { throw WeTrakrError.signInRequired }
-        let body = try JSONSerialization.data(withJSONObject: ["refresh_token": credentials.refreshToken])
-        let response = try await send(path: "/oauth/token/refresh", method: "POST",
-                                      clientID: credentials.clientID, body: body)
-        let token = try APIJSON.decoder().decode(TokenResponse.self, from: response.data)
-        try accept(token, clientID: credentials.clientID, sessionID: credentials.sessionID)
+        guard credentials.accessToken == staleToken else { return }
+        let task = Task {
+            let body = try JSONSerialization.data(withJSONObject: ["refresh_token": credentials.refreshToken])
+            let response = try await send(path: "/oauth/token/refresh", method: "POST",
+                                          clientID: credentials.clientID, body: body)
+            let token = try APIJSON.decoder().decode(TokenResponse.self, from: response.data)
+            try accept(token, clientID: credentials.clientID, sessionID: credentials.sessionID)
+        }
+        refreshTask = task
+        defer { if refreshTask == task { refreshTask = nil } }
+        try await task.value
     }
 
     private func accept(_ token: TokenResponse, clientID: String, sessionID: UUID) throws {
@@ -254,7 +267,14 @@ final class APIClient: WeTrakrServing {
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         if body != nil { request.setValue("application/json", forHTTPHeaderField: "Content-Type") }
         if let accessToken { request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization") }
-        let (data, response) = try await session.data(for: request)
+        let result: (Data, URLResponse)
+        do {
+            result = try await session.data(for: request)
+        } catch {
+            try Task.checkCancellation()
+            throw error
+        }
+        let (data, response) = result
         try Task.checkCancellation()
         guard let http = response as? HTTPURLResponse else {
             throw WeTrakrError.message("WeTrakr returned an invalid response.")

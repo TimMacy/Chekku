@@ -93,7 +93,9 @@ final class InfuseMonitor: ObservableObject {
     private var pollTask: Task<Void, Never>?
     private var saved: Set<ScrobbleItem.Identity> = []
     private var pending: [ScrobbleItem.Identity: (item: ScrobbleItem, retryAt: Date)] = [:]
-    private var notFound: Set<ScrobbleItem.Identity> = []
+    private var rejected: Set<ScrobbleItem.Identity> = []
+    private var hasFreshResult = false
+    private var activity: (any NSObjectProtocol)?
 
     init(scrobble: @escaping (ScrobbleItem) async throws -> Void) {
         self.scrobble = scrobble
@@ -129,8 +131,20 @@ final class InfuseMonitor: ObservableObject {
         devices = [:]
         saved.removeAll()
         pending.removeAll()
-        notFound.removeAll()
+        rejected.removeAll()
+        hasFreshResult = false
         status = .searching
+        setFollowingPlayback(false)
+    }
+
+    private func setFollowingPlayback(_ isFollowing: Bool) {
+        if isFollowing, activity == nil {
+            activity = ProcessInfo.processInfo.beginActivity(options: .userInitiatedAllowingIdleSystemSleep,
+                                                            reason: "Following playback in Infuse")
+        } else if !isFollowing, let activity {
+            ProcessInfo.processInfo.endActivity(activity)
+            self.activity = nil
+        }
     }
 
     private func update(_ results: Set<NWBrowser.Result>) {
@@ -153,6 +167,7 @@ final class InfuseMonitor: ObservableObject {
             for await report in group { if let report { reports.append(report) } }
         }
         guard !Task.isCancelled else { return }
+        hasFreshResult = false
         let active = reports.filter { $0.state == "playing" || $0.state == "paused" }
         for report in active {
             guard !Task.isCancelled else { return }
@@ -168,9 +183,9 @@ final class InfuseMonitor: ObservableObject {
 
     private func finish(_ item: ScrobbleItem) async {
         let key = item.identity
-        guard !saved.contains(key), !notFound.contains(key) else { return }
+        guard !Task.isCancelled, !saved.contains(key), !rejected.contains(key) else { return }
         if let entry = pending[key], entry.retryAt > Date() { return }
-        status = .saving(title: item.title)
+        if pending[key] == nil { status = .saving(title: item.title) }
         do {
             try await scrobble(item)
             guard !Task.isCancelled else { return }
@@ -179,14 +194,20 @@ final class InfuseMonitor: ObservableObject {
             status = .saved(title: item.title)
         } catch {
             guard !Task.isCancelled else { return }
-            if case WeTrakrError.http(404, _, _) = error {
+            if Self.isRejection(error) {
                 pending[key] = nil
-                notFound.insert(key)
+                rejected.insert(key)
             } else {
                 pending[key] = (item, Date().addingTimeInterval(60))
             }
             status = .failed(title: item.title, message: error.localizedDescription)
         }
+        hasFreshResult = true
+    }
+
+    private static func isRejection(_ error: any Error) -> Bool {
+        guard case WeTrakrError.http(let status, _, _) = error else { return false }
+        return (400..<500).contains(status) && ![401, 408, 429].contains(status)
     }
 
     private func updateStatus(_ active: [InfuseNowPlaying]) {
@@ -194,9 +215,10 @@ final class InfuseMonitor: ObservableObject {
             guard let item = report.item.flatMap(ScrobbleItem.init), let progress = report.progress else { return nil }
             return (item, progress)
         }.first
+        setFollowingPlayback(playing != nil)
         switch status {
         case .saved(let title), .failed(let title, _), .saving(let title):
-            if playing == nil || playing?.0.title == title { return }
+            if hasFreshResult || playing == nil || playing?.0.title == title { return }
         default: break
         }
         if let (item, progress) = playing {
