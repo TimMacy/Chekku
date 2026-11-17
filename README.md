@@ -2,7 +2,7 @@
 
 An unofficial Mac app for [WeTrakr](https://wetrakr.com/) to manually mark episodes as watched, or shows and movies automatically via [Infuse](https://firecore.com/infuse). The app displays the "Next episodes" section from the profile page, while respecting the set Spoiler Protection (Visible, Blurred, or Show Backdrop). It automatically refreshes on launch, after an episode is marked as watched, or via the **Refresh** button.
 
-<p align="center"><img width="100%" alt="チェック 〜 Chekku" src="https://github.com/user-attachments/assets/792b3e5e-3b72-4cd9-b258-097640792c54" /></p>
+<p align="center"><img width="100%" alt="チェック 〜 Chekku" src="Chekku.png" /></p>
 
 ## Connect to WeTrakr
 1. A personal API key is required and can be obtained via [WeTrakr Settings → API](https://wetrakr.com/profile/settings/api).
@@ -14,7 +14,9 @@ Chekku uses device authorization with a client_id. No WeTrakr password or client
 ## Connect to Infuse
 1. In Infuse 8.5.9 or later, enable **Settings → Playback → Now Playing API**.
 2. Open Chekku on the same network and allow **Local Network** access when macOS asks.
-3. While Chekku is open, it automatically marks episodes and movies as watched when playback reaches 90%, including when watching in the Infuse Apple TV app.
+3. While Chekku is open, it automatically marks episodes and movies as watched, including when watching in the Infuse Apple TV app.
+
+Playback is checked once a minute until 80%, then every 10 seconds. Switching to another episode of the same show between 80 and 89% marks the previous episode as watched. Otherwise, episodes and movies are marked watched when playback reaches 90%.
 
 Chekku only reads Infuse's Now Playing status on the local network and talks to the WeTrakr API.
 

@@ -122,7 +122,6 @@ struct UpNextView: View {
             if store.phase.isBusy {
                 ProgressView().controlSize(.small)
                 Text(store.phase == .saving ? "Saving episode…" :
-                        store.phase == .scrobbling ? "Saving playback…" :
                         store.phase == .loading ? "Loading episodes…" : "Checking for updates…")
             } else if store.isPreview {
                 Text("Sample data").foregroundStyle(.secondary)
@@ -148,9 +147,9 @@ struct UpNextView: View {
                 .font(.system(size: 40, weight: .light))
                 .foregroundStyle(.secondary)
             Text(store.phase.isBusy ? "Checking your episodes" :
-                    store.phase == .failed ? "Couldn't update your episodes" : "You're caught up")
+                    store.phase == .failed ? "Couldn't update episodes" : "You're caught up")
                 .font(.title3.weight(.medium))
-            Text(store.phase.isBusy ? "Your Up Next list will appear here." :
+            Text(store.phase.isBusy ? "Up Next list will appear here." :
                     store.phase == .failed ? "Click Refresh to try again." : "No aired episodes are waiting in your Watching list.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
@@ -166,12 +165,11 @@ struct UpNextView: View {
             Spacer()
             if !store.visibleShows.isEmpty {
                 Text(store.isPreview ? "Connect an account to mark episodes as watched." : "Click a poster to mark its episode as watched.").foregroundStyle(.secondary)
-                Text("|").foregroundStyle(.tertiary).accessibilityHidden(true)
+                Text("|").foregroundStyle(.tertiary)
             }
             Link("Powered by WeTrakr", destination: URL(string: "https://wetrakr.com/")!)
                 .modifier(PointingHandCursor())
                 .foregroundStyle(.secondary)
-                .fixedSize()
         }
         .font(.system(size: 11))
         .padding(.horizontal, 24)
@@ -205,7 +203,6 @@ private struct InfuseStatusView: View {
                 Text("Couldn't mark \(title) watched").help(message)
             }
         }
-        .foregroundStyle(.secondary)
         .lineLimit(1)
         .accessibilityElement(children: .combine)
     }

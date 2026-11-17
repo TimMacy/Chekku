@@ -24,48 +24,47 @@ struct InfuseNowPlaying: Decodable, Sendable {
     }
 }
 
-struct ScrobbleItem: Sendable {
+struct ScrobbleItem: Hashable, Sendable {
     enum Kind: Hashable, Sendable {
         case movie
         case episode(season: Int, number: Int)
     }
-    struct Identity: Hashable, Sendable {
-        let kind: Kind
-        let tmdb: Int?
-        let imdb: String?
-        let tvdb: Int?
-    }
-
-    let identity: Identity
-    var kind: Kind { identity.kind }
-    let title: String
+    var kind: Kind
+    var tmdb: Int?
+    var imdb: String?
+    var tvdb: Int?
+    var title: String
 
     init?(_ item: InfuseNowPlaying.Item) {
-        let tmdb = item.tmdbID.flatMap(Int.init).flatMap { $0 > 0 ? $0 : nil }
-        let imdb = item.imdbID.flatMap { $0.isEmpty ? nil : $0 }
-        let tvdb = item.tvdbID.flatMap(Int.init).flatMap { $0 > 0 ? $0 : nil }
+        tmdb = item.tmdbID.flatMap { Int($0) }
+        imdb = item.imdbID.flatMap { $0.isEmpty ? nil : $0 }
+        tvdb = item.tvdbID.flatMap { Int($0) }
         guard tmdb != nil || imdb != nil || tvdb != nil else { return nil }
-        let kind: Kind
         switch item.kind {
         case "movie":
             kind = .movie
             title = item.title ?? "Movie"
         case "episode":
-            guard let season = item.season, season >= 0,
-                  let number = item.episode, number > 0 else { return nil }
+            guard let season = item.season, let number = item.episode else { return nil }
             kind = .episode(season: season, number: number)
             title = String(format: "%@ S%02d | E%02d", item.seriesTitle ?? "Episode", season, number)
         default:
             return nil
         }
-        identity = Identity(kind: kind, tmdb: tmdb, imdb: imdb, tvdb: tvdb)
+    }
+
+    func isAnotherEpisode(of other: ScrobbleItem) -> Bool {
+        guard case .episode = kind, case .episode = other.kind, self != other else { return false }
+        if let tmdb, tmdb == other.tmdb { return true }
+        if let tvdb, tvdb == other.tvdb { return true }
+        return false
     }
 
     var ids: [String: Any] {
         var ids: [String: Any] = [:]
-        if let tmdb = identity.tmdb { ids["tmdb"] = tmdb }
-        if let imdb = identity.imdb { ids["imdb"] = imdb }
-        if let tvdb = identity.tvdb { ids["tvdb"] = tvdb }
+        if let tmdb { ids["tmdb"] = tmdb }
+        if let imdb { ids["imdb"] = imdb }
+        if let tvdb { ids["tvdb"] = tvdb }
         return ids
     }
 }
@@ -73,7 +72,9 @@ struct ScrobbleItem: Sendable {
 @MainActor
 final class InfuseMonitor: ObservableObject {
     static let watchedThreshold = 90.0
-    private static let pollInterval: Duration = .seconds(10)
+    private static let closeThreshold = 80.0
+    private static let slowInterval: Duration = .seconds(60)
+    private static let fastInterval: Duration = .seconds(10)
 
     enum Status: Equatable {
         case searching
@@ -88,12 +89,14 @@ final class InfuseMonitor: ObservableObject {
 
     private let scrobble: (ScrobbleItem) async throws -> Void
     private var browser: NWBrowser?
-    private var discoveryID: UUID?
     private var devices: [String: NWEndpoint] = [:]
     private var pollTask: Task<Void, Never>?
-    private var saved: Set<ScrobbleItem.Identity> = []
-    private var pending: [ScrobbleItem.Identity: (item: ScrobbleItem, retryAt: Date)] = [:]
-    private var rejected: Set<ScrobbleItem.Identity> = []
+    private var wake: Task<Void, Never>?
+    private var lastPlayed: [String: (item: ScrobbleItem, progress: Double)] = [:]
+    private var saved: Set<ScrobbleItem> = []
+    private var saving: Set<ScrobbleItem> = []
+    private var retryAfter: [ScrobbleItem: Date] = [:]
+    private var rejected: Set<ScrobbleItem> = []
     private var hasFreshResult = false
     private var activity: (any NSObjectProtocol)?
 
@@ -103,35 +106,40 @@ final class InfuseMonitor: ObservableObject {
 
     func start() {
         guard browser == nil else { return }
-        let discoveryID = UUID()
-        self.discoveryID = discoveryID
         let browser = NWBrowser(for: .bonjour(type: "_infuse-np._tcp", domain: "local."), using: .tcp)
         browser.browseResultsChangedHandler = { [weak self] results, _ in
-            MainActor.assumeIsolated {
-                guard let self, self.discoveryID == discoveryID else { return }
-                self.update(results)
-            }
+            MainActor.assumeIsolated { self?.update(results) }
         }
         browser.start(queue: .main)
         self.browser = browser
         pollTask = Task { [weak self] in
             while !Task.isCancelled {
-                await self?.poll()
-                try? await Task.sleep(for: Self.pollInterval)
+                guard let interval = await self?.poll() else { return }
+                await self?.sleep(for: interval)
             }
         }
     }
 
+    private func sleep(for interval: Duration) async {
+        guard !Task.isCancelled else { return }
+        let wait = Task { _ = try? await Task.sleep(for: interval) }
+        wake = wait
+        await withTaskCancellationHandler { await wait.value } onCancel: { wait.cancel() }
+        if wake == wait { wake = nil }
+    }
+
     func stop() {
-        discoveryID = nil
         browser?.cancel()
         browser = nil
         pollTask?.cancel()
         pollTask = nil
+        wake = nil
         devices = [:]
-        saved.removeAll()
-        pending.removeAll()
-        rejected.removeAll()
+        lastPlayed = [:]
+        saved = []
+        saving = []
+        retryAfter = [:]
+        rejected = []
         hasFreshResult = false
         status = .searching
         setFollowingPlayback(false)
@@ -151,56 +159,71 @@ final class InfuseMonitor: ObservableObject {
         var found: [String: NWEndpoint] = [:]
         for result in results {
             guard case .service(let name, _, _, _) = result.endpoint else { continue }
-            if found[name] == nil { found[name] = result.endpoint }
+            if found[name] == nil { found[name] = devices[name] ?? result.endpoint }
         }
+        let isNew = found.keys.contains { devices[$0] == nil }
         devices = found
         if found.isEmpty { status = .searching }
+        if isNew { wake?.cancel() }
     }
 
-    private func poll() async {
-        let endpoints = Array(devices.values)
-        var reports: [InfuseNowPlaying] = []
-        await withTaskGroup(of: InfuseNowPlaying?.self) { group in
-            for endpoint in endpoints {
-                group.addTask { try? await InfuseClient.nowPlaying(at: endpoint) }
+    private func poll() async -> Duration {
+        let endpoints = devices
+        var reports: [(device: String, report: InfuseNowPlaying)] = []
+        await withTaskGroup(of: (String, InfuseNowPlaying)?.self) { group in
+            for (name, endpoint) in endpoints {
+                group.addTask { (try? await InfuseClient.nowPlaying(at: endpoint)).map { (name, $0) } }
             }
             for await report in group { if let report { reports.append(report) } }
         }
-        guard !Task.isCancelled else { return }
+        guard !Task.isCancelled else { return Self.slowInterval }
         hasFreshResult = false
-        let active = reports.filter { $0.state == "playing" || $0.state == "paused" }
-        for report in active {
-            guard !Task.isCancelled else { return }
+        var interval = Self.slowInterval
+        let active = reports.filter { $0.report.state != "idle" && $0.report.item != nil }
+        for (device, report) in active {
+            guard !Task.isCancelled else { return Self.slowInterval }
             guard let item = report.item.flatMap(ScrobbleItem.init), let progress = report.progress else { continue }
+            let previous = lastPlayed[device]
+            lastPlayed[device] = (item, progress)
+            if let previous, previous.progress >= Self.closeThreshold, item.isAnotherEpisode(of: previous.item) {
+                await finish(previous.item)
+            }
             if progress >= Self.watchedThreshold { await finish(item) }
+            if progress >= Self.closeThreshold, !saved.contains(item) { interval = Self.fastInterval }
         }
-        for entry in Array(pending.values) {
-            guard !Task.isCancelled else { return }
-            await finish(entry.item)
-        }
-        if !Task.isCancelled { updateStatus(active) }
+        for item in Array(retryAfter.keys) { await finish(item) }
+        guard !Task.isCancelled else { return Self.slowInterval }
+        updateStatus(active.map(\.report))
+        return interval
     }
 
     private func finish(_ item: ScrobbleItem) async {
-        let key = item.identity
-        guard !Task.isCancelled, !saved.contains(key), !rejected.contains(key) else { return }
-        if let entry = pending[key], entry.retryAt > Date() { return }
-        if pending[key] == nil { status = .saving(title: item.title) }
+        guard !Task.isCancelled, !saved.contains(item), !saving.contains(item),
+              !rejected.contains(item) else { return }
+        if let date = retryAfter[item], date > Date() { return }
+        saving.insert(item)
+        defer { saving.remove(item) }
+        if retryAfter[item] == nil { status = .saving(title: item.title) }
+        let failure: (any Error)?
         do {
             try await scrobble(item)
-            guard !Task.isCancelled else { return }
-            saved.insert(key)
-            pending[key] = nil
-            status = .saved(title: item.title)
+            failure = nil
         } catch {
-            guard !Task.isCancelled else { return }
-            if Self.isRejection(error) {
-                pending[key] = nil
-                rejected.insert(key)
+            failure = error
+        }
+        guard !Task.isCancelled else { return }
+        if let failure {
+            if Self.isRejection(failure) {
+                retryAfter[item] = nil
+                rejected.insert(item)
             } else {
-                pending[key] = (item, Date().addingTimeInterval(60))
+                retryAfter[item] = Date().addingTimeInterval(60)
             }
-            status = .failed(title: item.title, message: error.localizedDescription)
+            status = .failed(title: item.title, message: failure.localizedDescription)
+        } else {
+            saved.insert(item)
+            retryAfter[item] = nil
+            status = .saved(title: item.title)
         }
         hasFreshResult = true
     }
@@ -293,10 +316,10 @@ enum InfuseClient {
             if let content { exchange.data.append(content) }
             if let error {
                 exchange.finish(.failure(error), connection)
-            } else if exchange.data.count > 1_000_000 {
-                exchange.finish(.failure(WeTrakrError.message("Infuse's response was too large.")), connection)
             } else if isComplete {
                 exchange.finish(.success(exchange.data), connection)
+            } else if exchange.data.count > 1_000_000 {
+                exchange.finish(.failure(WeTrakrError.message("Infuse's response was too large.")), connection)
             } else {
                 receive(connection, exchange)
             }
